@@ -1,3 +1,6 @@
+//
+//  Created by songdewei on 2020/12/23.
+//
 
 #if __has_include("RCTBridgeModule.h")
 #import "RCTBridgeModule.h"
@@ -14,10 +17,6 @@
 @interface RNAlipay : NSObject <RCTBridgeModule>
 
 @property (nonatomic, copy) RCTPromiseResolveBlock payOrderResolve;
-
-+ (void)handleOpenURL:(NSURL *)url;
-
-- (NSString *)appScheme;
 
 @end
   

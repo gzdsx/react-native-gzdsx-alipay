@@ -1,13 +1,18 @@
+//
+//  Created by songdewei on 2020/12/23.
+//
 
 #import "RNAlipay.h"
+#import <objc/runtime.h>
 
-static NSString *const kOpenURLNotification = @"RCTOpenURLNotification";
+static RCTPromiseResolveBlock _resolve;
+static RCTPromiseRejectBlock _reject;
 
 @implementation RNAlipay
 
 - (instancetype)init {
     if (self = [super init]) {
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleOpenURL:) name:kOpenURLNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleOpenURL:) name:@"RCTOpenURLNotification" object:nil];
     }
     return self;
 }
@@ -20,34 +25,6 @@ static NSString *const kOpenURLNotification = @"RCTOpenURLNotification";
     return YES;
 }
 
-//- (void)handleOpenURL:(NSNotification *)notification {
-//    NSString *urlString = notification.userInfo[@"url"];
-//    NSURL *url = [NSURL URLWithString:urlString];
-//    if ([url.host isEqualToString:@"safepay"]) {
-//        __weak __typeof__(self) weakSelf = self;
-//        [AlipaySDK.defaultService processOrderWithPaymentResult:url standbyCallback:^(NSDictionary *resultDic) {
-//            NSLog(@"processOrderWithPaymentResult = %@", resultDic);
-//            if (weakSelf.payOrderResolve) {
-//                weakSelf.payOrderResolve(resultDic);
-//                weakSelf.payOrderResolve = nil;
-//            }
-//        }];
-//        
-//        [AlipaySDK.defaultService processAuth_V2Result:url standbyCallback:^(NSDictionary *resultDic) {
-//            NSLog(@"processAuth_V2Result = %@", resultDic);
-//        }];
-//    }
-//}
-
-+ (void)handleOpenURL:(NSURL *)url{
-    if ([url.host isEqualToString:@"safepay"]) {
-        //跳转支付宝钱包进行支付，处理支付结果
-        [[AlipaySDK defaultService] processOrderWithPaymentResult:url standbyCallback:^(NSDictionary *resultDic) {
-            NSLog(@"result = %@",resultDic);
-        }];
-    }
-}
-
 - (dispatch_queue_t)methodQueue
 {
     return dispatch_get_main_queue();
@@ -55,28 +32,36 @@ static NSString *const kOpenURLNotification = @"RCTOpenURLNotification";
 
 RCT_EXPORT_MODULE()
 
-RCT_EXPORT_METHOD(authWithInfo:(NSString *)infoStr
+RCT_EXPORT_METHOD(auth:(NSString *)infoStr
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
+    
+    _resolve = resolve;
+    _reject = reject;
     [AlipaySDK.defaultService auth_V2WithInfo:infoStr fromScheme:self.appScheme callback:^(NSDictionary *resultDic) {
-        resolve(resultDic);
+        [RNAlipay handleResult:resultDic];
     }];
 }
 
 RCT_EXPORT_METHOD(pay:(NSString *)orderInfo
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
-    self.payOrderResolve = resolve;
+    
+    _resolve = resolve;
+    _reject = reject;
     [AlipaySDK.defaultService payOrder:orderInfo fromScheme:self.appScheme callback:^(NSDictionary *resultDic) {
-                resolve(resultDic);
+        [RNAlipay handleResult:resultDic];
     }];
 }
 
 RCT_EXPORT_METHOD(payInterceptorWithUrl:(NSString *)urlStr
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
+    
+    _resolve = resolve;
+    _reject = reject;
     [AlipaySDK.defaultService payInterceptorWithUrl:urlStr fromScheme:self.appScheme callback:^(NSDictionary *resultDic) {
-        resolve(resultDic);
+        [RNAlipay handleResult:resultDic];
     }];
 }
 
@@ -94,6 +79,33 @@ RCT_EXPORT_METHOD(getVersion:(RCTPromiseResolveBlock)resolve) {
         }
     }
     return nil;
+}
+
+- (void)handleOpenURL:(NSNotification *)notification {
+    NSString *urlString = notification.userInfo[@"url"];
+    NSURL *url = [NSURL URLWithString:urlString];
+    if ([url.host isEqualToString:@"safepay"]) {
+        //__weak __typeof__(self) weakSelf = self;
+        [AlipaySDK.defaultService processOrderWithPaymentResult:url standbyCallback:^(NSDictionary *resultDic) {
+            NSLog(@"processOrderWithPaymentResult = %@", resultDic);
+            [RNAlipay handleResult:resultDic];
+        }];
+        
+        [AlipaySDK.defaultService processAuth_V2Result:url standbyCallback:^(NSDictionary *resultDic) {
+            NSLog(@"processAuth_V2Result = %@", resultDic);
+            [RNAlipay handleResult:resultDic];
+        }];
+    }
+}
+
++(void) handleResult:(NSDictionary *)resultDic
+{
+    NSString *status = resultDic[@"resultStatus"];
+    if ([status integerValue] >= 8000) {
+        _resolve(resultDic);
+    } else {
+        _reject(status, resultDic[@"memo"], [NSError errorWithDomain:resultDic[@"memo"] code:[status integerValue] userInfo:NULL]);
+    }
 }
 
 @end
